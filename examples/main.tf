@@ -21,6 +21,16 @@ resource "gs308e_switch" "switch_tv" {
   ip = "10.7.1.13"
   prefix_length = 24
   gateway = "10.7.1.1"
+
+  port {
+    id = 1
+    pvid = 1
+  }
+
+  port {
+    id = 3
+    pvid = 110
+  }
 }
 
 /*

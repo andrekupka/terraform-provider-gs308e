@@ -5,6 +5,6 @@ provider "andrekupka.de/ntgr/gs308e" {
   version     = "0.1.0"
   constraints = "0.1.0"
   hashes = [
-    "h1:wWgKdt+WQDG6Ni5nl1GTjeHyEdlqfR8mzzNBVdcKn9A=",
+    "h1:H8kgdz4FFmvJ4Q21nPU6On+pVyEEaDq7ehrA0bBzKNw=",
   ]
 }

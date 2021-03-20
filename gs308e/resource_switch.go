@@ -7,6 +7,7 @@ import (
 	"github.com/andrekupka/gs308e/nsdp/protocol"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"log"
 	"net"
 )
 
@@ -21,34 +22,56 @@ func resourceSwitch() *schema.Resource {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"name": {
+			"model": {
 				Type:     schema.TypeString,
 				Computed: true,
+			},
+			"name": {
+				Type:     schema.TypeString,
 				Optional: true,
+				Computed: true,
 			},
 			"ip": {
 				Type:         schema.TypeString,
-				Computed:     true,
 				Optional:     true,
+				Computed:     true,
 				RequiredWith: []string{"prefix_length", "gateway"},
 			},
 			"prefix_length": {
 				Type:         schema.TypeInt,
-				Computed:     true,
 				Optional:     true,
+				Computed:     true,
 				RequiredWith: []string{"ip", "gateway"},
 			},
 			"gateway": {
 				Type:         schema.TypeString,
-				Computed:     true,
 				Optional:     true,
+				Computed:     true,
 				RequiredWith: []string{"ip", "prefix_length"},
 			},
 			"dhcp": {
-				Type:     schema.TypeBool,
-				Computed: true,
-				Optional: true,
+				Type:          schema.TypeBool,
+				Optional:      true,
+				Computed:      true,
 				ConflictsWith: []string{"ip", "prefix_length", "gateway"},
+			},
+			"port": {
+				Type:     schema.TypeList,
+				Optional: true,
+				Computed: true,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"id": {
+							Type:     schema.TypeInt,
+							Required: true,
+						},
+						"pvid": {
+							Type:     schema.TypeInt,
+							Optional: true,
+							Computed: true,
+						},
+					},
+				},
 			},
 		},
 	}
@@ -94,6 +117,7 @@ func getSwitch(ctx context.Context, d *schema.ResourceData, m interface{}) (clie
 }
 
 func resourceSwitchRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+	log.Println("READING-XXXXXXXXXXXXXXXXXXXXXXXXXX")
 	handle, diags := getSwitch(ctx, d, m)
 	if len(diags) > 0 {
 		return diags
@@ -102,8 +126,24 @@ func resourceSwitchRead(ctx context.Context, d *schema.ResourceData, m interface
 	return readSwitch(ctx, d, handle)
 }
 
+func determineDefinedPortIds(d *schema.ResourceData) []int {
+	var ids []int
+
+	ports := d.Get("port").([]interface{})
+	for _, unsafePort := range ports {
+		port := unsafePort.(map[string]interface{})
+		ids = append(ids, port["id"].(int))
+	}
+
+	return ids
+}
+
 func readSwitch(ctx context.Context, d *schema.ResourceData, handle client.Switch) diag.Diagnostics {
 	var diags diag.Diagnostics
+
+	if err := d.Set("model", handle.Model()); err != nil {
+		return diag.FromErr(err)
+	}
 
 	name, err := handle.GetDeviceName(ctx)
 	if err != nil {
@@ -118,7 +158,6 @@ func readSwitch(ctx context.Context, d *schema.ResourceData, handle client.Switc
 	if err = d.Set("name", name.Name); err != nil {
 		return diag.FromErr(err)
 	}
-
 
 	dhcp, err := handle.GetDHCP(ctx)
 	if err != nil {
@@ -158,6 +197,26 @@ func readSwitch(ctx context.Context, d *schema.ResourceData, handle client.Switc
 		}
 	}
 
+	pvids, err := handle.GetPVIDs(ctx)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	definedPortIds := determineDefinedPortIds(d)
+	var ports []interface{}
+
+	for _, portId := range definedPortIds {
+		port := map[string]interface{}{
+			"id":   portId,
+			"pvid": pvids[uint8(portId)].Value,
+		}
+		ports = append(ports, port)
+	}
+
+	if err = d.Set("port", ports); err != nil {
+		return diag.FromErr(err)
+	}
+
 	d.SetId(handle.HardwareAddr().String())
 
 	return diags
@@ -183,12 +242,34 @@ func updateNetwork(ctx context.Context, d *schema.ResourceData, handle client.Sw
 			Gateway: net.ParseIP(gateway.(string)),
 		}
 
-		return handle.SetDeviceNetwork(ctx, &network)
+		err := handle.SetDeviceNetwork(ctx, &network)
+		if err != nil {
+			return err
+		}
 	}
+
+	dhcp, dhcpOk := d.GetOk("dhcp")
+	if dhcpOk {
+		return handle.SetDHCP(ctx, &protocol.DHCP{Enabled: dhcp.(bool)})
+	}
+
 	return nil
 }
 
+/*
+func updatePorts(ctx context.Context, d *schema.ResourceData, handle client.Switch) error {
+	portsValue, ok := d.GetOk("port")
+	if !ok {
+		return nil
+	}
+
+	ports := portsValue.([]map[string]interface{})
+
+	return nil
+}*/
+
 func resourceSwitchCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+	log.Println("CREATING-XXXXXXXXXXXXXXXXXXXXXXXXXX")
 	handle, diags := getSwitch(ctx, d, m)
 	if len(diags) > 0 {
 		return diags
@@ -210,6 +291,7 @@ func resourceSwitchCreate(ctx context.Context, d *schema.ResourceData, m interfa
 }
 
 func resourceSwitchUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+	log.Println("UPDATING-XXXXXXXXXXXXXXXXXXXXXXXXXX")
 	handle, diags := getSwitch(ctx, d, m)
 	if len(diags) > 0 {
 		return diags
@@ -222,7 +304,7 @@ func resourceSwitchUpdate(ctx context.Context, d *schema.ResourceData, m interfa
 		}
 	}
 
-	if d.HasChanges("ip", "prefix_length", "gateway") {
+	if d.HasChanges("ip", "prefix_length", "gateway", "dhcp") {
 		err := updateNetwork(ctx, d, handle)
 		if err != nil {
 			return diag.FromErr(err)
@@ -235,6 +317,7 @@ func resourceSwitchUpdate(ctx context.Context, d *schema.ResourceData, m interfa
 }
 
 func resourceSwitchDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+	log.Println("DELETING-XXXXXXXXXXXXXXXXXXXXXXXXXX")
 	var diags diag.Diagnostics
 	// we just virtually delete the switch but cannot reset switch config
 	d.SetId("")
