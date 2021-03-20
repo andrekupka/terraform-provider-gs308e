@@ -55,7 +55,7 @@ func resourceSwitch() *schema.Resource {
 				ConflictsWith: []string{"ip", "prefix_length", "gateway"},
 			},
 			"port": {
-				Type:     schema.TypeList,
+				Type:     schema.TypeSet,
 				Optional: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
@@ -69,7 +69,7 @@ func resourceSwitch() *schema.Resource {
 							Computed: true,
 						},
 						"vlan": {
-							Type:     schema.TypeList,
+							Type:     schema.TypeSet,
 							Optional: true,
 							Elem: &schema.Resource{
 								Schema: map[string]*schema.Schema{

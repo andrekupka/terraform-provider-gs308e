@@ -87,14 +87,14 @@ type portIdWithVlanTags struct {
 func determineDefinedPortsAndVlansIds(d *schema.ResourceData) []portIdWithVlanTags {
 	portInfos := make([]portIdWithVlanTags, 0)
 
-	ports := d.Get("port").([]interface{})
+	ports := d.Get("port").(*schema.Set)
 
-	for _, unsafePort := range ports {
+	for _, unsafePort := range ports.List() {
 		port := unsafePort.(map[string]interface{})
-		vlans := port["vlan"].([]interface{})
+		vlans := port["vlan"].(*schema.Set)
 
 		var tags []int
-		for _, unsafeVlan := range vlans {
+		for _, unsafeVlan := range vlans.List() {
 			vlan := unsafeVlan.(map[string]interface{})
 			tags = append(tags, vlan["tag"].(int))
 		}
