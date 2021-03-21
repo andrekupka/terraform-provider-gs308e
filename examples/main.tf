@@ -21,6 +21,8 @@ resource "gs308e_switch" "switch_tv" {
   cidr = "10.7.1.13/24"
   gateway = "10.7.1.1"
 
+  loop_detection = true
+
   vlan_mode = "tagged"
 
   port {
