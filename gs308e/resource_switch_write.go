@@ -18,30 +18,9 @@ func updateName(ctx context.Context, d *schema.ResourceData, handle client.Switc
 	return nil
 }
 
-func updateNetwork(ctx context.Context, d *schema.ResourceData, handle client.Switch) error {
-	cidr, cidrOk := d.GetOk("cidr")
-	gateway, gatewayOk := d.GetOk("gateway")
-	if cidrOk && gatewayOk {
-		ip, ipNet, _ := net.ParseCIDR(cidr.(string))
-
-		network := protocol.DeviceNetwork{
-			IP:      ip,
-			Mask:    ipNet.Mask,
-			Gateway: net.ParseIP(gateway.(string)),
-		}
-
-		err := handle.SetDeviceNetwork(ctx, &network)
-		if err != nil {
-			return err
-		}
-	}
-
-	dhcp, dhcpOk := d.GetOk("dhcp")
-	if dhcpOk {
-		return handle.SetDHCP(ctx, &protocol.DHCP{Enabled: dhcp.(bool)})
-	}
-
-	return nil
+func updateLoopDetection(ctx context.Context, d *schema.ResourceData, handle client.Switch) error {
+	loopDetection := d.Get("loop_detection")
+	return handle.SetLoopDetection(ctx, loopDetection.(bool))
 }
 
 func updatePVIDs(ctx context.Context, d *schema.ResourceData, handle client.Switch) error {
@@ -110,6 +89,32 @@ func updatePorts(ctx context.Context, d *schema.ResourceData, handle client.Swit
 	return nil
 }
 
+func updateNetwork(ctx context.Context, d *schema.ResourceData, handle client.Switch) error {
+	cidr, cidrOk := d.GetOk("cidr")
+	gateway, gatewayOk := d.GetOk("gateway")
+	if cidrOk && gatewayOk {
+		ip, ipNet, _ := net.ParseCIDR(cidr.(string))
+
+		network := protocol.DeviceNetwork{
+			IP:      ip,
+			Mask:    ipNet.Mask,
+			Gateway: net.ParseIP(gateway.(string)),
+		}
+
+		err := handle.SetDeviceNetwork(ctx, &network)
+		if err != nil {
+			return err
+		}
+	}
+
+	dhcp, dhcpOk := d.GetOk("dhcp")
+	if dhcpOk {
+		return handle.SetDHCP(ctx, &protocol.DHCP{Enabled: dhcp.(bool)})
+	}
+
+	return nil
+}
+
 func resourceSwitchCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	log.Println("CREATING-XXXXXXXXXXXXXXXXXXXXXXXXXX")
 	handle, diags := getSwitch(ctx, d, m)
@@ -122,12 +127,17 @@ func resourceSwitchCreate(ctx context.Context, d *schema.ResourceData, m interfa
 		return diag.FromErr(err)
 	}
 
-	err = updateNetwork(ctx, d, handle)
+	err = updateLoopDetection(ctx, d, handle)
 	if err != nil {
 		return diag.FromErr(err)
 	}
 
 	err = updatePorts(ctx, d, handle)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	err = updateNetwork(ctx, d, handle)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -153,6 +163,13 @@ func resourceSwitchUpdate(ctx context.Context, d *schema.ResourceData, m interfa
 
 	if d.HasChanges("ip", "prefix_length", "gateway", "dhcp") {
 		err := updateNetwork(ctx, d, handle)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+	}
+
+	if d.HasChanges("loop_detection") {
+		err := updateLoopDetection(ctx, d, handle)
 		if err != nil {
 			return diag.FromErr(err)
 		}

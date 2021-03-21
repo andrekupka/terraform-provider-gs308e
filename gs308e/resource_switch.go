@@ -50,6 +50,11 @@ func resourceSwitch() *schema.Resource {
 				Optional:      true,
 				Computed:      true,
 			},
+			"loop_detection": {
+				Type: schema.TypeBool,
+				Optional: true,
+				Default: true,
+			},
 			"vlan_mode": {
 				Type:         schema.TypeString,
 				Optional:     true,

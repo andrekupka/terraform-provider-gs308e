@@ -93,6 +93,18 @@ func determineDefinedPortIds(d *schema.ResourceData) []int {
 	return portIds
 }
 
+func readLoopDetection(ctx context.Context, d *schema.ResourceData, handle client.Switch) diag.Diagnostics {
+	loopDetection, err := handle.GetLoopDetection(ctx)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	if err = d.Set("loop_detection", loopDetection); err != nil {
+		return diag.FromErr(err)
+	}
+	return nil
+}
+
 func readVlanMode(ctx context.Context, d *schema.ResourceData, handle client.Switch) diag.Diagnostics {
 	mode, err := handle.GetVLANMode(ctx)
 	if err != nil {
@@ -165,6 +177,11 @@ func readSwitch(ctx context.Context, d *schema.ResourceData, handle client.Switc
 	}
 
 	diags = readNetwork(ctx, d, handle)
+	if diags != nil {
+		return diags
+	}
+
+	diags = readLoopDetection(ctx, d, handle)
 	if diags != nil {
 		return diags
 	}
