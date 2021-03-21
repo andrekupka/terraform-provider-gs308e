@@ -18,18 +18,19 @@ resource "gs308e_switch" "switch_tv" {
   mac = "38:94:ed:1a:57:f1"
   name = "switch-tv"
 
-  ip = "10.7.1.13"
-  prefix_length = 24
+  cidr = "10.7.1.13/24"
   gateway = "10.7.1.1"
 
+  vlan_mode = "tagged"
+
   port {
-    id = 1
+    id = 7
     pvid = 1
   }
 
   port {
-    id = 3
-    pvid = 110
+    id = 8
+    pvid = 1
   }
 }
 

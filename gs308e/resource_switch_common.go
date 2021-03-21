@@ -4,10 +4,28 @@ import (
 	"context"
 	"fmt"
 	"github.com/andrekupka/gs308e/client"
+	"github.com/andrekupka/gs308e/nsdp/protocol"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"net"
 )
+
+type VLANMode string
+
+const (
+	PortBasedVLAN VLANMode = "port"
+	TaggedVLAN VLANMode = "tagged"
+)
+
+func mapVLANMode(mode *protocol.VLANMode) VLANMode {
+	switch mode.Code {
+	case protocol.EasyPortBased, protocol.AdvancedPortBased:
+		return PortBasedVLAN
+	case protocol.EasyTagged, protocol.AdvancedTagged:
+		return TaggedVLAN
+	}
+	panic(fmt.Sprintf("invalid vlan mode code: %d", mode.Code))
+}
 
 func getSwitch(ctx context.Context, d *schema.ResourceData, m interface{}) (client.Switch, diag.Diagnostics) {
 	config := m.(ProviderContext)

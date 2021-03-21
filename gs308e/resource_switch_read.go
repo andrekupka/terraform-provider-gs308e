@@ -23,6 +23,9 @@ func readBasic(ctx context.Context, d *schema.ResourceData, handle client.Switch
 	if err := d.Set("model", handle.Model()); err != nil {
 		return diag.FromErr(err)
 	}
+	if err := d.Set("port_count", handle.PortCount()); err != nil {
+		return diag.FromErr(err)
+	}
 
 	name, err := handle.GetDeviceName(ctx)
 	if err != nil {
@@ -65,11 +68,9 @@ func readNetwork(ctx context.Context, d *schema.ResourceData, handle client.Swit
 		}
 
 		prefixLength, _ := network.Mask.Size()
+		cidr := fmt.Sprintf("%s/%d", network.IP, prefixLength)
 
-		if err = d.Set("ip", network.IP.String()); err != nil {
-			return diag.FromErr(err)
-		}
-		if err = d.Set("prefix_length", prefixLength); err != nil {
+		if err = d.Set("cidr", cidr); err != nil {
 			return diag.FromErr(err)
 		}
 		if err = d.Set("gateway", network.Gateway.String()); err != nil {
@@ -79,33 +80,30 @@ func readNetwork(ctx context.Context, d *schema.ResourceData, handle client.Swit
 	return nil
 }
 
-type portIdWithVlanTags struct {
-	id int
-	tags []int
-}
-
-func determineDefinedPortsAndVlansIds(d *schema.ResourceData) []portIdWithVlanTags {
-	portInfos := make([]portIdWithVlanTags, 0)
+func determineDefinedPortIds(d *schema.ResourceData) []int {
+	portIds := make([]int, 0)
 
 	ports := d.Get("port").(*schema.Set)
 
 	for _, unsafePort := range ports.List() {
 		port := unsafePort.(map[string]interface{})
-		vlans := port["vlan"].(*schema.Set)
-
-		var tags []int
-		for _, unsafeVlan := range vlans.List() {
-			vlan := unsafeVlan.(map[string]interface{})
-			tags = append(tags, vlan["tag"].(int))
-		}
-
-		portInfos = append(portInfos, portIdWithVlanTags{
-			id:   port["id"].(int),
-			tags: tags,
-		})
+		portIds = append(portIds, port["id"].(int))
 	}
 
-	return portInfos
+	return portIds
+}
+
+func readVlanMode(ctx context.Context, d *schema.ResourceData, handle client.Switch) diag.Diagnostics {
+	mode, err := handle.GetVLANMode(ctx)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	modeString := mapVLANMode(mode)
+	if err = d.Set("vlan_mode", modeString); err != nil {
+		return diag.FromErr(err)
+	}
+	return nil
 }
 
 func readPorts(ctx context.Context, d *schema.ResourceData, handle client.Switch) diag.Diagnostics {
@@ -114,33 +112,36 @@ func readPorts(ctx context.Context, d *schema.ResourceData, handle client.Switch
 		return diag.FromErr(err)
 	}
 
-	taggedVlans, err := handle.GetTaggedVLANs(ctx)
+	actualVlans, err := handle.GetTaggedVLANs(ctx)
 	if err != nil {
 		return diag.FromErr(err)
 	}
 
-	portsAndTags := determineDefinedPortsAndVlansIds(d)
+	portIds := determineDefinedPortIds(d)
 	var ports []interface{}
 
-	for _, portAndTag := range portsAndTags {
-		byteId := uint8(portAndTag.id)
+	for _, portId := range portIds {
+		byteId := uint8(portId)
 
-		var vlans []interface{}
-		for _, tag := range portAndTag.tags {
-			vlan := taggedVlans[uint16(tag)]
+		taggedVlans := make([]int, 0)
+		untaggedVlans := make([]int, 0)
+
+		for tag, vlan := range actualVlans {
 			tagged, ok := vlan.Members[byteId]
 			if ok {
-				vlans = append(vlans, map[string]interface{}{
-					"tag":    tag,
-					"tagged": tagged,
-				})
+				if tagged {
+					taggedVlans = append(taggedVlans, int(tag))
+				} else {
+					untaggedVlans = append(untaggedVlans, int(tag))
+				}
 			}
 		}
 
 		port := map[string]interface{}{
-			"id":   portAndTag.id,
-			"pvid": pvids[byteId].Value,
-			"vlan": vlans,
+			"id":       portId,
+			"pvid":     pvids[byteId].Value,
+			"tagged":   taggedVlans,
+			"untagged": untaggedVlans,
 		}
 		ports = append(ports, port)
 	}
@@ -164,6 +165,11 @@ func readSwitch(ctx context.Context, d *schema.ResourceData, handle client.Switc
 	}
 
 	diags = readNetwork(ctx, d, handle)
+	if diags != nil {
+		return diags
+	}
+
+	diags = readVlanMode(ctx, d, handle)
 	if diags != nil {
 		return diags
 	}
